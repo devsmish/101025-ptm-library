@@ -285,7 +285,14 @@ print(f"Количество связанных книг: {books_count}")
 2. Среди них найти тех, кто родился в 1990-2000 годах
 3. Исключить неактивных членов
 4. Отсортировать по имени"""
-
+users_woman = User.objects.filter(
+        role=User.Role.lib_member,
+        gender=User.Gender.female,
+        age__range=(25, 45),
+        birth_date__year__range=(1990, 2000)
+    ).exclude(
+        is_active=False
+    ).order_by('first_name')
 
 
 """## Задача 19: Массовое создание связей членов библиотеки с библиотекой
@@ -294,8 +301,24 @@ print(f"Количество связанных книг: {books_count}")
 2. Найти библиотеку с id=1
 3. Создать массово связи M2M между этими членами и библиотекой
 4. Исключить членов, которые уже связаны с этой библиотекой"""
+library = Library.objects.get(id=1)
 
+users_to_add = User.objects.filter(
+    role=User.Role.lib_member
+).exclude(
+    membership_records__library=library
+)
 
+new_memberships = [
+    Membership(member=user, library=library)
+    for user in users_to_add
+]
+
+if new_memberships:
+    Membership.objects.bulk_create(new_memberships)
+    print(f"Успешно добавлено новых связей: {len(new_memberships)}")
+else:
+    print("Все активные читатели уже привязаны к этой библиотеке.")
 
 """## Задача 20: Сложный поиск займов с временными условиями
 **ТЗ:**
