@@ -9,7 +9,7 @@ django.setup()
 from library.models.users import User, Membership
 from library.models.authors import Author
 from library.models.books import Book
-from django.db.models import Q, F, Count, Min, Max, Avg, Sum
+from django.db.models import Q, F, Count
 from library.models.library import Library
 from django.utils import timezone
 from library.models.borrow import Borrow
@@ -17,6 +17,7 @@ from library.models.category import Category
 from django.db.models.functions import ExtractMonth
 from library.models.posts import Posts
 from datetime import timedelta
+from django.db.models.functions import ExtractQuarter
 
 
 """## Задача 1: Создание нового члена библиотеки
@@ -24,21 +25,20 @@ from datetime import timedelta
 2. Установить обязательные поля: email='new_member@test.com', role='lib_member'
 3. Добавить дополнительные данные: first_name='John', last_name='Doe', gender='male', age=25, birth_date
 4. Сохранить в базе данных"""
-# new_user = User.objects.create_user(username='Serg', email='serg@gmail.com', password='qwertyuiop',
-#                                     role='lib_member',
-#                                     first_name='John',
-#                                     last_name='Doe',
-#                                     gender='male',
-#                                     age=25,
-#                                     birth_date='2000-01-22')
+new_user = User.objects.create_user(username='Serg', email='serg@gmail.com', password='qwertyuiop',
+                                    role='lib_member',
+                                    first_name='John',
+                                    last_name='Doe',
+                                    gender='male',
+                                    age=25,
+                                    birth_date='2000-01-22')
 
 """## Задача 2: Получение конкретного автора и обновление рейтинга **ТЗ:**
 1. Найти автора с id=1
 2. Обновить его рейтинг на 9.5
 3. Сохранить изменения в базе данных"""
-
 # author = Author.objects.filter(id=1).update(rating=9.5)
-
+#
 # author = Author.objects.filter(id=1).first()
 # author.rating = 8.5
 # author.save()
@@ -51,7 +51,6 @@ author.save()
 1. Найти все книги категории с названием, содержащим 'Fiction'
 2. Исключить книги с количеством страниц меньше 200
 3. Подсчитать количество таких книг"""
-
 books = Book.objects.filter(
     category__name__contains='Fiction',
     pages__gt=200
@@ -65,7 +64,6 @@ print(books.count())
 1. Найти всех членов библиотеки, которые являются либо администраторами, либо сотрудниками
 2. Исключить неактивных членов
 3. Отсортировать по фамилии и имени"""
-
 users_staff_members = User.objects.filter(
     Q(role='admin') | Q(role='moderator')
 ).exclude(is_active=False).order_by('last_name', 'first_name')
@@ -79,7 +77,6 @@ for staff_members in users_staff_members:
 2. Найти авторов с рейтингом выше 8.5
 3. Найти авторов, родившихся после 1950 года
 4. Получить первого автора из результата"""
-
 author = Author.objects.filter(name__startswith='A')
 
 author_rating = Author.objects.filter(rating__gt=8.5)
@@ -121,11 +118,9 @@ Category.objects.bulk_create(categories)
 3. Использовать bulk_update для оптимизации"""
 upd_users = User.objects.filter(role='lib_member')
 
-# Меняем статус в памяти
 for user in upd_users:
     user.is_active = True
 
-# Массово обновляем в базе данных одним запросом
 User.objects.bulk_update(upd_users, fields=['is_active'])
 
 """## Задача 9: Поиск книг с complex lookups и сортировка
@@ -160,9 +155,6 @@ print(f"Количество: {authors_count}, Существуют ли: {autho
 2. Среди найденных авторов взять только активных
 3. Исключить авторов без указанной даты рождения
 4. Подсчитать общее количество и проверить существование'''
-
-from django.db.models import Q
-
 autors = Author.objects.filter(
     Q(rating__gt=9.0)|Q(date_for_birth__year__lt=1980),
     deleted=False
@@ -182,7 +174,6 @@ if autors:
 2. Найти библиотеку с id=2
 3. Создать связь many-to-many между членом и библиотекой
 4. Проверить, что связь была создана успешно"""
-
 member= User.objects.get(id=15)
 lib= Library.objects.get(id=2)
 membership= Membership.objects.create(member=member,library=lib)
@@ -194,10 +185,9 @@ print(member, membership.library)
 2. Среди них найти те, где return_date уже прошла (меньше текущей даты)
 3. Исключить займы, где return_date равно None
 4. Отсортировать по дате займа (старые первыми)"""
-
 date = str(timezone.now().date())
-# print(date)
-# print(type(date))
+print(date)
+print(type(date))
 borrows = Borrow.objects.filter(
     Q(is_returned=False) & Q(return_plane_date__lt=date)
 ).exclude(return_actual_date__isnull=True).order_by("issue_date")
@@ -256,7 +246,6 @@ else:
 libraries = (Library.objects.filter(Q(name__icontains="Central") | Q (location__contains="New")).
              exclude(website__isnull=True))
 
-
 """## Задача 16: Сложная фильтрация авторов по активности и рейтингу
 **ТЗ:**
 1. Найти активных авторов с рейтингом от 8.0 до 9.5 включительно
@@ -296,7 +285,6 @@ users_woman = User.objects.filter(
     ).exclude(
         is_active=False
     ).order_by('first_name')
-
 
 """## Задача 19: Массовое создание связей членов библиотеки с библиотекой
 **ТЗ:**
@@ -467,7 +455,21 @@ active_multi_library_members = (
 2. Найти библиотеки, в названии которых есть слово "Tech"
 3. Создать связи many-to-many между этими книгами и библиотеками
 4. Проверить, что связи были созданы"""
+books = Book.objects.filter(category__name='SCIENCE_FICTION')
+libraries = Library.objects.filter(name__icontains='Tech')
 
+if books.exists() and libraries.exists():
+    for book in books:
+        book.libraries.add(*libraries)
+
+    linked_books_count = Book.objects.filter(
+        category__name='SCIENCE_FICTION',
+        libraries__in=libraries
+    ).distinct().count()
+
+    print(f"Проверка успешна! {linked_books_count} книг(и) теперь связаны с Tech-библиотеками.")
+else:
+    print("Не удалось найти книги указанного жанра или подходящие библиотеки.")
 
 """## Задача 27: Анализ займов по временным периодам
 **ТЗ:**
@@ -475,8 +477,38 @@ active_multi_library_members = (
 2. Разделить их на кварталы (Q1: янв-март, Q2: апр-июнь, Q3: июль-сен, Q4: окт-дек)
 3. Для каждого квартала посчитать количество займов и возвратов
 4. Найти квартал с наибольшей активностью"""
+quarterly_stats = (
+    Borrow.objects
+    .filter(issue_date__year=2023)
+    .annotate(quarter=ExtractQuarter('issue_date'))
+    .values('quarter')
+    .annotate(
+        total_borrows=Count('id'),
+        total_returns=Count('id', filter=Q(is_returned=True))
+    )
+    .order_by('quarter')
+)
 
+quarter_names = {1: "Q1 (Янв-Март)", 2: "Q2 (Апр-Июнь)", 3: "Q3 (Июль-Сен)", 4: "Q4 (Окт-Дек)"}
 
+max_activity = 0
+best_quarter = None
+
+print("--- Статистика по кварталам за 2023 год ---")
+for data in quarterly_stats:
+    q_num = data['quarter']
+    borrows = data['total_borrows']
+    returns = data['total_returns']
+
+    print(f"{quarter_names[q_num]}: Займов = {borrows}, Возвратов = {returns}")
+
+    if borrows > max_activity:
+        max_activity = borrows
+        best_quarter = quarter_names[q_num]
+
+print("-------------------------------------------")
+if best_quarter:
+    print(f"Квартал с наибольшей активностью: {best_quarter} ({max_activity} займов)")
 
 """## Задача 28: Поиск и создание категорий с иерархией
 **ТЗ:**
@@ -484,8 +516,31 @@ active_multi_library_members = (
 2. Создать отсутствующие категории
 3. Найти книги без категории и присвоить им категорию "Без категории"
 4. Вывести статистику по количеству книг в каждой категории"""
+target_categories = ["Классическая литература", "Современная проза", "Детская литература"]
 
+print("--- Проверка и создание категорий ---")
+for cat_name in target_categories:
+    category, created = Category.objects.get_or_create(name=cat_name)
+    if created:
+        print(f" -> Категория '{cat_name}' успешно создана.")
+    else:
+        print(f" -> Категория '{cat_name}' уже существует.")
 
+fallback_category, _ = Category.objects.get_or_create(name="Без категории")
+
+unsorted_books_count = Book.objects.filter(category__isnull=True).update(category=fallback_category)
+print(f"\nНайдено и исправлено книг без категории: {unsorted_books_count}")
+
+categories_with_stats = (
+    Category.objects
+    .annotate(book_count=Count('books'))
+    .values('name', 'book_count')
+    .order_by('-book_count')
+)
+
+print("\n--- Статистика по количеству книг ---")
+for cat in categories_with_stats:
+    print(f"Категория: '{cat['name']}' | Количество книг: {cat['book_count']}")
 
 """## Задача 29: Сложный поиск с множественными связями
 **ТЗ:**
@@ -493,8 +548,14 @@ active_multi_library_members = (
 2. Среди них найти тех, кто брал книги автора с рейтингом выше 8.0
 3. Исключить членов младше 21 года
 4. Получить уникальный список таких членов"""
-
-
+unique_members = (
+    User.objects
+    .filter(membership_records__library__website__isnull=False)
+    .exclude(membership_records__library__website="")
+    .filter(borrows__book__author__rating__gt=8.0)
+    .filter(age__gt=21)
+    .distinct()
+)
 
 """## Задача 30: Комплексная работа с датами и статусами
 **ТЗ:**
@@ -502,3 +563,31 @@ active_multi_library_members = (
 2. Среди них найти те, которые длились более 45 дней
 3. Проверить статус возврата и подсчитать просроченные
 4. Создать отчет по библиотекам с наибольшим количеством проблемных займов"""
+today = timezone.now().date()
+
+weekend_long_borrows = Borrow.objects.filter(
+    issue_date__week_day__in=[1, 7]
+).filter(
+    Q(is_returned=True, return_date__gt=F('issue_date') + timedelta(days=45)) |
+    Q(is_returned=False, issue_date__lt=today - timedelta(days=45))
+)
+
+overdue_weekend_borrows_count = weekend_long_borrows.filter(
+    is_returned=False,
+    return_plane_date__lt=today
+).count()
+
+print(f"Всего займов выходного дня (>45 дней): {weekend_long_borrows.count()}")
+print(f"Из них признаны просроченными: {overdue_weekend_borrows_count}\n")
+
+library_report = (
+    Borrow.objects
+    .filter(is_returned=False, return_plane_date__lt=today)
+    .values('library__name')
+    .annotate(problem_count=Count('id'))
+    .order_by('-problem_count')
+)
+
+print("--- ОТЧЕТ: ПРОБЛЕМНЫЕ ЗАЙМЫ В БИБЛИОТЕКАХ ---")
+for item in library_report:
+    print(f"Библиотека: '{item['library__name']}' | Не возвращено в срок: {item['problem_count']} шт.")
