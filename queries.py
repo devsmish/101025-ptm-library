@@ -9,11 +9,14 @@ django.setup()
 from library.models.users import User, Membership
 from library.models.authors import Author
 from library.models.books import Book
-from django.db.models import Q
+from django.db.models import Q, F, Count, Min, Max, Avg, Sum
 from library.models.library import Library
 from django.utils import timezone
 from library.models.borrow import Borrow
 from library.models.category import Category
+from django.db.models.functions import ExtractMonth
+from library.models.posts import Posts
+from datetime import timedelta
 
 
 """## Задача 1: Создание нового члена библиотеки
@@ -326,8 +329,18 @@ else:
 2. Среди них найти те, которые были возвращены вовремя (до или в дату return_date)
 3. Исключить займы без указанной даты возврата
 4. Сгруппировать результаты по месяцам и посчитать количество в каждом месяце"""
+borrows_grouped = (
+    Borrow.objects.filter(issue_date__year=2022)
+    .exclude(return_actual_date__isnull=True)
+    .filter(return_actual_date__lte=F('return_plane_date'))
+    .annotate(month=ExtractMonth('issue_date'))
+    .values('month')
+    .annotate(count=Count('id'))
+    .order_by('month')
+)
 
-
+for entry in borrows_grouped:
+    print(f"Месяц: {entry['month']}, Успешных займов: {entry['count']}")
 
 """## Задача 21: Поиск книг по связанным моделям с множественными условиями
 **ТЗ:**
@@ -335,24 +348,84 @@ else:
 2. Среди них найти те, которые опубликованы пользователями с ролью 'admin' или 'employee'
 3. Исключить книги без автора и без издателя
 4. Отсортировать по дате публикации (новые первыми)"""
-
-
-
+filtered_books = (
+    Book.objects
+    .filter(author__rating__gt=7.5)
+    .filter(owner__role__in=['admin', 'employee'])
+    .exclude(author__isnull=True)
+    .exclude(publisher__isnull=True)
+    .order_by('-published_date')
+)
 
 """## Задача 22: Создание постов с валидацией и связями
 **ТЗ:**
 1. Найти активного автора с наивысшим рейтингом
 2. Создать для него 3 поста с разными заголовками
 3. Проверить, что все посты были созданы успешно"""
+top_author = User.objects.filter(is_active=True).order_by('-rating').first()
 
+default_library = Library.objects.first()
 
+if top_author and default_library:
+    posts_to_create = [
+        Posts(
+            title="Тренды автоматизации библиотек в 2026 году",
+            post_text="Первый пост",
+            author=top_author,
+            library=default_library
+        ),
+        Posts(
+            title="Как Django ORM упрощает жизнь разработчику",
+            post_text="Второй пост",
+            author=top_author,
+            library=default_library
+        ),
+        Posts(
+            title="Мировые бестселлеры этой весны",
+            post_text="Третий пост",
+            author=top_author,
+            library=default_library
+        ),
+    ]
+
+    created_posts = Posts.objects.bulk_create(posts_to_create)
+
+    if len(created_posts) == 3 and all(post.pk for post in created_posts):
+        print(f"Успех! Для автора {top_author.username} создано 3 поста.")
+        for post in created_posts:
+            print(f" -> Создан пост: '{post.title}' (ID: {post.pk})")
+    else:
+        print("Что-то пошло не так при создании постов.")
+else:
+    print("Не удалось найти активного автора или библиотеку.")
 
 """## Задача 23: Сложная фильтрация займов по датам и статусам
 **ТЗ:**
 1. Найти займы, сделанные в последние 6 месяцев от текущей даты
 2. Среди них найти те, которые должны были быть возвращены более 30 дней назад
 3. Получить информацию о библиотеке и пользователе для каждого займа"""
+today = timezone.now().date()
 
+six_months_ago = today - timedelta(days=180)  # 6 месяцев (примерно 180 дней)
+thirty_days_ago = today - timedelta(days=30)  # Более 30 дней назад
+
+overdue_borrows = (
+    Borrow.objects
+    .filter(issue_date__gte=six_months_ago)
+    .filter(return_plane_date__lt=thirty_days_ago)
+    .filter(is_returned=False)
+    .values(
+        'pk',
+        'member__username',
+        'member__email',
+        'library__name'
+    )
+)
+
+for borrow in overdue_borrows:
+    print(f"Заем ID {borrow['pk']}:")
+    print(f" -> Читатель: {borrow['member__username']} (Email: {borrow['member__email']})")
+    print(f" -> Библиотека: {borrow['library__name']}")
 
 """## Задача 24: Массовое обновление авторов с условной логикой
 **ТЗ:**
@@ -360,8 +433,16 @@ else:
 2. Найти авторов с рейтингом ниже 5.0
 3. Объединить эти группы с помощью Q-объектов
 4. Массово установить им рейтинг 5.0 и статус is_active=False"""
+authors_to_update = Author.objects.filter(
+    Q(date_for_birth__isnull=True) | Q(rating__lt=5.0)
+)
 
+updated_count = authors_to_update.update(
+    rating=5.0,
+    deleted=True
+)
 
+print(f"Операция завершена. Успешно обновлено авторов: {updated_count}")
 
 """## Задача 25: Поиск членов библиотеки по активности в библиотеках
 **ТЗ:**
@@ -369,8 +450,16 @@ else:
 2. Среди них найти тех, кто имеет активные займы (не возвращенные)
 3. Исключить членов с ролью 'admin', 'staff'
 4. Отсортировать по фамилии и имени"""
-
-
+active_multi_library_members = (
+    User.objects
+    .exclude(role=User.Role.admin)
+    .exclude(is_staff=True)
+    .filter(borrows__is_returned=False)
+    .annotate(library_count=Count('membership_records__library', distinct=True))
+    .filter(library_count__gt=1)
+    .order_by('last_name', 'first_name')
+    .distinct()
+)
 
 """## Задача 26: Создание связей между книгами и библиотеками
 **ТЗ:**
